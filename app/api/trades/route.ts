@@ -6,8 +6,11 @@ import {
   getPortfolioSummary,
   resetAccount,
 } from "@/lib/portfolio";
+import { getUserId } from "@/lib/user";
 
 export async function POST(request: Request) {
+  const userId = getUserId();
+
   try {
     const body = (await request.json()) as {
       type?: "buy" | "sell" | "reset";
@@ -17,8 +20,8 @@ export async function POST(request: Request) {
     };
 
     if (body.type === "reset") {
-      await resetAccount();
-      const portfolio = await getPortfolioSummary();
+      await resetAccount(userId);
+      const portfolio = await getPortfolioSummary(userId);
       return NextResponse.json({ ok: true, portfolio });
     }
 
@@ -30,13 +33,13 @@ export async function POST(request: Request) {
         );
       }
 
-      const trade = await executeBuy({
+      const trade = await executeBuy(userId, {
         symbol: body.symbol,
         dollars: Number(body.dollars),
         note: body.note,
       });
 
-      const portfolio = await getPortfolioSummary();
+      const portfolio = await getPortfolioSummary(userId);
       return NextResponse.json({ ok: true, trade, portfolio });
     }
 
@@ -48,12 +51,12 @@ export async function POST(request: Request) {
         );
       }
 
-      const trade = await executeSell({
+      const trade = await executeSell(userId, {
         symbol: body.symbol,
         note: body.note,
       });
 
-      const portfolio = await getPortfolioSummary();
+      const portfolio = await getPortfolioSummary(userId);
       return NextResponse.json({ ok: true, trade, portfolio });
     }
 

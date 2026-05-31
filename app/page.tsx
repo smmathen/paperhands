@@ -32,14 +32,16 @@ import {
   getRecentTrades,
   getSnapshotHistory,
 } from "@/lib/portfolio";
+import { getUserId } from "@/lib/user";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
+  const userId = getUserId();
   const [portfolio, snapshots, recentTrades] = await Promise.all([
-    getPortfolioSummary(),
-    getSnapshotHistory(),
-    getRecentTrades(10),
+    getPortfolioSummary(userId),
+    getSnapshotHistory(userId),
+    getRecentTrades(userId, 10),
   ]);
 
   const returnTone =

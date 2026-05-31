@@ -44,6 +44,8 @@ That's it — no cloud database, no deployment, no login.
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `FINNHUB_API_KEY` | Yes | Free API key from [finnhub.io](https://finnhub.io/) for delayed US stock/ETF quotes |
+| `DATABASE_URL` | No | Neon Postgres connection string. Omit for local SQLite (`data/paperhands.db`). |
+| `DEV_USER_ID` | No | Portfolio scope per user (default: `local-dev`). Use different ids to test multi-user locally. |
 
 ## Scripts
 
@@ -69,6 +71,28 @@ Your portfolio lives in `data/paperhands.db` (gitignored). Each clone of the rep
 - Notes: required on every trade (min 3 characters)
 - Cash rules: strict — trades rejected if insufficient cash or shares
 
-## Future: deploy
+## Neon Postgres (hosted prep)
 
-This app is local-first today. If you later want to host it publicly, you'd need to re-add auth, pick a hosted database, and configure deployment — but none of that is required to use Paperhands now.
+1. Create a project at [neon.tech](https://neon.tech) and copy the connection string.
+2. Add to `.env.local`:
+
+   ```
+   DATABASE_URL=postgresql://...
+   ```
+
+3. Push schema to Neon (loads `.env.local` if you use a dotenv wrapper, or export the var in your shell):
+
+   ```bash
+   export $(grep -v '^#' .env.local | xargs) && npm run db:push:pg
+   ```
+
+4. Run the app as usual (`npm run dev`). Data is scoped per `DEV_USER_ID`.
+
+**SQLite → Postgres:** Existing local SQLite files lack `user_id` columns. Delete `data/paperhands.db` and run `npm run db:push`, or reset after migrating.
+
+## Roadmap (serious product)
+
+- **S1 (done):** Multi-tenant schema + Postgres support
+- **S2:** Auth (when ready)
+- **S3:** Deploy + cron snapshots
+- **S4:** Insights / realized P&L

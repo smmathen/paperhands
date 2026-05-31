@@ -1,11 +1,13 @@
-import { desc, eq, asc } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 
 import {
   account,
   holdings,
   portfolioSnapshots,
   trades,
-} from "@/db/schema";
+} from "@/db/schema.sqlite";
+
+type Trade = typeof trades.$inferSelect;
 import { db } from "@/lib/db";
 import { fetchQuote, fetchQuotes, normalizeSymbol } from "@/lib/finnhub";
 import { MAX_NOTE_LENGTH, MIN_NOTE_LENGTH } from "@/lib/trade-limits";
@@ -55,8 +57,13 @@ function toNumber(value: string | number): number {
   return typeof value === "number" ? value : Number(value);
 }
 
-export async function ensureAccount() {
-  const existing = await db.select().from(account).limit(1);
+export async function ensureAccount(userId: string) {
+  const existing = await db
+    .select()
+    .from(account)
+    .where(eq(account.userId, userId))
+    .limit(1);
+
   if (existing.length > 0) {
     return existing[0];
   }
@@ -64,18 +71,24 @@ export async function ensureAccount() {
   const [created] = await db
     .insert(account)
     .values({
+      userId,
       cash: STARTING_BALANCE.toFixed(2),
       startingBalance: STARTING_BALANCE.toFixed(2),
     })
     .returning();
 
-  await recordSnapshot();
+  await recordSnapshot(userId);
   return created;
 }
 
-export async function getPortfolioSummary(): Promise<PortfolioSummary> {
-  const acct = await ensureAccount();
-  const allHoldings = await db.select().from(holdings);
+export async function getPortfolioSummary(
+  userId: string,
+): Promise<PortfolioSummary> {
+  const acct = await ensureAccount(userId);
+  const allHoldings = await db
+    .select()
+    .from(holdings)
+    .where(eq(holdings.userId, userId));
 
   const quotes = await fetchQuotes(allHoldings.map((h) => h.symbol));
 
@@ -132,9 +145,13 @@ export async function getPortfolioSummary(): Promise<PortfolioSummary> {
   };
 }
 
-export async function recordSnapshot() {
-  const acct = await ensureAccount();
-  const allHoldings = await db.select().from(holdings);
+export async function recordSnapshot(userId: string) {
+  const acct = await ensureAccount(userId);
+  const allHoldings = await db
+    .select()
+    .from(holdings)
+    .where(eq(holdings.userId, userId));
+
   const quotes = await fetchQuotes(allHoldings.map((h) => h.symbol));
 
   let holdingsValue = 0;
@@ -149,6 +166,7 @@ export async function recordSnapshot() {
   const totalValue = cash + holdingsValue;
 
   await db.insert(portfolioSnapshots).values({
+    userId,
     totalValue: totalValue.toFixed(2),
     cash: cash.toFixed(2),
     holdingsValue: holdingsValue.toFixed(2),
@@ -156,10 +174,13 @@ export async function recordSnapshot() {
   });
 }
 
-export async function getSnapshotHistory(): Promise<SnapshotPoint[]> {
+export async function getSnapshotHistory(
+  userId: string,
+): Promise<SnapshotPoint[]> {
   const rows = await db
     .select()
     .from(portfolioSnapshots)
+    .where(eq(portfolioSnapshots.userId, userId))
     .orderBy(asc(portfolioSnapshots.recordedAt));
 
   return rows.map((row) => ({
@@ -169,11 +190,14 @@ export async function getSnapshotHistory(): Promise<SnapshotPoint[]> {
   }));
 }
 
-export async function executeBuy(input: {
-  symbol: string;
-  dollars: number;
-  note: string;
-}) {
+export async function executeBuy(
+  userId: string,
+  input: {
+    symbol: string;
+    dollars: number;
+    note: string;
+  },
+) {
   const symbol = normalizeSymbol(input.symbol);
   const note = normalizeNote(input.note);
 
@@ -181,7 +205,7 @@ export async function executeBuy(input: {
     throw new Error("Dollar amount must be greater than zero");
   }
 
-  const acct = await ensureAccount();
+  const acct = await ensureAccount(userId);
   const cash = toNumber(acct.cash);
 
   if (input.dollars > cash) {
@@ -194,7 +218,7 @@ export async function executeBuy(input: {
   const existing = await db
     .select()
     .from(holdings)
-    .where(eq(holdings.symbol, symbol))
+    .where(and(eq(holdings.userId, userId), eq(holdings.symbol, symbol)))
     .limit(1);
 
   if (existing.length > 0) {
@@ -210,9 +234,12 @@ export async function executeBuy(input: {
         shares: newShares.toFixed(6),
         avgCost: newAvgCost.toFixed(4),
       })
-      .where(eq(holdings.symbol, symbol));
+      .where(
+        and(eq(holdings.userId, userId), eq(holdings.symbol, symbol)),
+      );
   } else {
     await db.insert(holdings).values({
+      userId,
       symbol,
       shares: shares.toFixed(6),
       avgCost: quote.price.toFixed(4),
@@ -227,6 +254,7 @@ export async function executeBuy(input: {
   const [trade] = await db
     .insert(trades)
     .values({
+      userId,
       type: "buy",
       symbol,
       dollars: input.dollars.toFixed(2),
@@ -236,18 +264,21 @@ export async function executeBuy(input: {
     })
     .returning();
 
-  await recordSnapshot();
+  await recordSnapshot(userId);
   return trade;
 }
 
-export async function executeSell(input: { symbol: string; note: string }) {
+export async function executeSell(
+  userId: string,
+  input: { symbol: string; note: string },
+) {
   const symbol = normalizeSymbol(input.symbol);
   const note = normalizeNote(input.note);
 
   const existing = await db
     .select()
     .from(holdings)
-    .where(eq(holdings.symbol, symbol))
+    .where(and(eq(holdings.userId, userId), eq(holdings.symbol, symbol)))
     .limit(1);
 
   if (existing.length === 0) {
@@ -259,10 +290,12 @@ export async function executeSell(input: { symbol: string; note: string }) {
   const quote = await fetchQuote(symbol);
   const proceeds = shares * quote.price;
 
-  const acct = await ensureAccount();
+  const acct = await ensureAccount(userId);
   const cash = toNumber(acct.cash);
 
-  await db.delete(holdings).where(eq(holdings.symbol, symbol));
+  await db
+    .delete(holdings)
+    .where(and(eq(holdings.userId, userId), eq(holdings.symbol, symbol)));
 
   await db
     .update(account)
@@ -272,6 +305,7 @@ export async function executeSell(input: { symbol: string; note: string }) {
   const [trade] = await db
     .insert(trades)
     .values({
+      userId,
       type: "sell",
       symbol,
       dollars: proceeds.toFixed(2),
@@ -281,16 +315,18 @@ export async function executeSell(input: { symbol: string; note: string }) {
     })
     .returning();
 
-  await recordSnapshot();
+  await recordSnapshot(userId);
   return trade;
 }
 
-export async function resetAccount() {
-  await db.delete(trades);
-  await db.delete(holdings);
-  await db.delete(portfolioSnapshots);
+export async function resetAccount(userId: string) {
+  await db.delete(trades).where(eq(trades.userId, userId));
+  await db.delete(holdings).where(eq(holdings.userId, userId));
+  await db
+    .delete(portfolioSnapshots)
+    .where(eq(portfolioSnapshots.userId, userId));
 
-  const acct = await ensureAccount();
+  const acct = await ensureAccount(userId);
   await db
     .update(account)
     .set({
@@ -299,22 +335,31 @@ export async function resetAccount() {
     })
     .where(eq(account.id, acct.id));
 
-  await recordSnapshot();
+  await recordSnapshot(userId);
 }
 
-export async function getRecentTrades(limit = 10) {
+export async function getRecentTrades(
+  userId: string,
+  limit = 10,
+): Promise<Trade[]> {
   return db
     .select()
     .from(trades)
+    .where(eq(trades.userId, userId))
     .orderBy(desc(trades.executedAt))
     .limit(limit);
 }
 
-export async function getAllTrades(page = 1, pageSize = 20) {
+export async function getAllTrades(
+  userId: string,
+  page = 1,
+  pageSize = 20,
+): Promise<Trade[]> {
   const offset = (page - 1) * pageSize;
   return db
     .select()
     .from(trades)
+    .where(eq(trades.userId, userId))
     .orderBy(desc(trades.executedAt))
     .limit(pageSize)
     .offset(offset);

@@ -21,11 +21,12 @@ import {
   formatShares,
 } from "@/lib/format";
 import { getAllTrades } from "@/lib/portfolio";
+import { getUserId } from "@/lib/user";
 
 export const dynamic = "force-dynamic";
 
 export default async function HistoryPage() {
-  const trades = await getAllTrades();
+  const trades = await getAllTrades(getUserId());
 
   return (
     <AppShell>
