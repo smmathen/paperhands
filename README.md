@@ -1,36 +1,74 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Paperhands
 
-## Getting Started
+A local gut-check paper trading journal. Log hypothetical stock and ETF buys/sells, track what your portfolio would be worth, and see whether trusting your gut would have made money.
 
-First, run the development server:
+Built with Next.js, SQLite, Finnhub delayed quotes, and [Neobrutalism components](https://www.neobrutalism.dev/docs/installation) (dark theme).
+
+## Features
+
+- Log gut buys with ticker + dollar amount (filled at delayed market price)
+- Sell full positions with a required note on every trade
+- Dashboard with account value, cash, holdings, unrealized P&L, and equity curve
+- Trade history log
+- Reset account back to $10,000
+- Runs entirely on your machine — data stays in `data/paperhands.db`
+
+## Quick start
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+git clone <your-repo-url>
+cd paperhands
+npm install
+cp .env.example .env.local
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Add your free [Finnhub API key](https://finnhub.io/) to `.env.local`:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```
+FINNHUB_API_KEY=your_key_here
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Then:
 
-## Learn More
+```bash
+npm run db:push
+npm run dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+Open [http://localhost:3000](http://localhost:3000).
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+That's it — no cloud database, no deployment, no login.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Environment variables
 
-## Deploy on Vercel
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `FINNHUB_API_KEY` | Yes | Free API key from [finnhub.io](https://finnhub.io/) for delayed US stock/ETF quotes |
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Scripts
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start development server |
+| `npm run build` | Production build |
+| `npm run start` | Run production server locally |
+| `npm run db:push` | Create/update SQLite schema |
+| `npm run db:generate` | Generate migration files |
+| `npm run db:studio` | Open Drizzle Studio |
+
+## Data storage
+
+Your portfolio lives in `data/paperhands.db` (gitignored). Each clone of the repo gets its own isolated database. Delete that file to start completely fresh, or use the in-app **Reset Account** button.
+
+## Paper trading rules
+
+- Starting balance: **$10,000**
+- Assets: US stocks and ETFs
+- Buys: dollar amount at current delayed quote when submitted
+- Sells: full position only
+- Notes: required on every trade (min 3 characters)
+- Cash rules: strict — trades rejected if insufficient cash or shares
+
+## Future: deploy
+
+This app is local-first today. If you later want to host it publicly, you'd need to re-add auth, pick a hosted database, and configure deployment — but none of that is required to use Paperhands now.
